@@ -16,11 +16,12 @@ GyverDS18Single dso(12);  // пин
 #include <GyverDS18Array.h>
 
 uint64_t addr[] = {
-    0x4D0417508099FF28,
-    0xFE04175159CDFF28,
-    0xC3041750E553FF28,
-    0xCF0417505B78FF28,
+    0x4D0417508099FF28, //датчик на дне
+    0xFE04175159CDFF28, //датчик воздуха в центре
+    0xC3041750E553FF28, //датчик наверху
+    0xCF0417505B78FF28, //датчик у двери
 };
+
 GyverDS18Array dsi(5, addr, 4);
 
 void setup() {
@@ -30,23 +31,18 @@ void setup() {
 }
 void loop() {
   static int tempOut;
-  static int tempIn;
-    if (!dso.tick()) {
-      tempOut = dso.getTemp()*10;
-    }
-    if (!dsi.tick()) {
-        
-        float temps[4];
-        dsi.readTemps(temps);
-        for (float t : temps) {
-          tempIn = 0;
-          tempIn += t;
-        }
-        tempIn *= 0.25;
-    }
-    disp.clear();
-    disp.print(tempIn);
-    disp.setCursor(3);
-    disp.print('*');
-    disp.update();
+  static float tempIn;
+  if (!dso.tick()) {
+    tempOut = dso.getTemp()*10;
+  }
+  float temps[4];
+  if (!dsi.tick()) {
+    dsi.readTemps(temps);
+    //tempIn = 0;        
+  }
+  disp.clear();
+  disp.print((int)temps[1]);
+  disp.setCursor(3);
+  disp.print('*');
+  disp.update();
 }
