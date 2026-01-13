@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "author": "Anonymous maker",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-v1", "id": "esp", "top": -2.72, "left": 24, "attrs": {} },
+    {
+      "type": "wokwi-tm1637-7segment",
+      "id": "sevseg1",
+      "top": 230.36,
+      "left": -69.77,
+      "attrs": { "color": "red" }
+    },
+    { "type": "board-ds18b20", "id": "temp1", "top": -39.53, "left": -130.32, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay1", "top": 38.6, "left": 182.4, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay2", "top": 105.8, "left": 182.4, "attrs": {} },
+    { "type": "board-ds18b20", "id": "temp2", "top": -39.53, "left": -15.12, "attrs": {} },
+    { "type": "board-ds18b20", "id": "temp3", "top": -39.53, "left": -53.52, "attrs": {} },
+    { "type": "board-ds18b20", "id": "temp4", "top": -39.53, "left": -91.92, "attrs": {} },
+    { "type": "board-ds18b20", "id": "temp5", "top": -39.53, "left": -168.72, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "temp3:GND", "esp:GND.2", "black", [ "v0" ] ],
+    [ "temp2:GND", "esp:GND.2", "black", [ "v0" ] ],
+    [ "temp4:GND", "esp:GND.2", "black", [ "v0" ] ],
+    [ "temp1:GND", "esp:GND.2", "black", [ "v0" ] ],
+    [ "temp5:GND", "esp:GND.2", "black", [ "v0" ] ],
+    [ "temp2:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "temp3:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "temp4:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "temp1:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "temp5:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "temp2:DQ", "esp:D5", "green", [ "v0" ] ],
+    [ "esp:D5", "temp3:DQ", "green", [ "h0" ] ],
+    [ "esp:D5", "temp4:DQ", "green", [ "h0" ] ],
+    [ "esp:D5", "temp1:DQ", "green", [ "h0" ] ],
+    [ "esp:D12", "temp5:DQ", "green", [ "h0" ] ],
+    [ "sevseg1:GND", "esp:GND.1", "black", [ "h48", "v-134.4" ] ],
+    [ "esp:3V3", "sevseg1:VCC", "green", [ "v0", "h18.71", "v115.2" ] ],
+    [ "sevseg1:DIO", "esp:D2", "green", [ "h57.6", "v-124.8" ] ],
+    [ "esp:D4", "sevseg1:CLK", "green", [ "h47.51", "v9.6" ] ],
+    [ "relay2:GND", "esp:GND.1", "black", [ "h0" ] ],
+    [ "relay1:GND", "relay2:GND", "black", [ "h-19.2", "v-0.4" ] ],
+    [ "relay1:VCC", "relay2:VCC", "red", [ "h-9.6", "v38.4" ] ],
+    [ "relay2:VCC", "esp:3V3", "red", [ "h-9.6", "v19.2" ] ],
+    [ "relay1:IN", "esp:D19", "green", [ "h-38.4", "v-9.8" ] ],
+    [ "esp:D18", "relay2:IN", "green", [ "h9.11", "v19.2", "h48" ] ]
+  ],
+  "dependencies": {}
+}
