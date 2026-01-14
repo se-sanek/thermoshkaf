@@ -5,24 +5,24 @@
 #include <GyverRelay.h>
 
 // ================= НАСТРОЙКИ СЕТИ =================
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASS";
+const char* ssid = "DTT-231/2";
+const char* password = "#231-akv1";
 
 // ================= ПИНЫ =================
-#define DS_PIN 5            // Шина датчиков
+#define DS_PIN 13            // Шина датчиков
 #define CLK_PIN 2           // Дисплей
 #define DIO_PIN 4           // Дисплей
 #define RELAY_PIN 18        // Реле
 
 // ================= ОБЪЕКТЫ =================
-GyverSegment disp(CLK_PIN, DIO_PIN);
-GyverRelay regulator(RELE_COMMON);
+Disp1637Colon disp(CLK_PIN, DIO_PIN);
+GyverRelay regulator(REVERSE);
 WebServer server(80);
 
 // ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
 // Данные датчиков
 #define MAX_SENSORS 4
-uint64_t sensorAddrs[MAX_SENSORS] = {
+uint64_t sensorAddrs[] = {
     0x4D0417508099FF28, //датчик на дне
     0xFE04175159CDFF28, //датчик воздуха в центре
     0xC3041750E553FF28, //датчик наверху
@@ -30,7 +30,8 @@ uint64_t sensorAddrs[MAX_SENSORS] = {
 }; // Массив адресов
 float sensorTemps[MAX_SENSORS];    // Массив температур
 int deviceCount = MAX_SENSORS;               // Реальное кол-во датчиков
-GyverDS18Array ds(DS_PIN, sensorAddrs, MAX_SENSORS);       // Объект для работы с шиной
+
+GyverDS18 ds(DS_PIN);       // Объект для работы с шиной
 
 volatile float currentAvgTemp = 0.0;
 volatile float targetTemp = 25.0;
@@ -105,8 +106,7 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);
 
   // Дисплей
-  disp.brightness(7);
-  disp.displayByte(_S, _c, _a, _n);
+  //disp.displayByte(_S, _c, _a, _n);
 
   // Настройка WiFi
   WiFi.begin(ssid, password);
@@ -133,62 +133,59 @@ void setup() {
   );
 
   // Настройка регулятора
-  regulator.setHb(0.5);
-  regulator.setDirection(NORMAL);
+  regulator.setpoint = targetTemp;    // установка (ставим на 40 градусов)
+  regulator.hysteresis = 2;   // ширина гистерезиса
+  regulator.k = 0.5;          // коэффициент обратной связи (подбирается по факту)
+  //regulator.hysteresis = 0.5;
+  //regulator.setDirection(NORMAL);
 }
 
 // ================= LOOP (ЯДРО 1) - ЛОГИКА =================
 void loop() {
-  static uint32_t tmr;
-  
-  // Опрос раз в секунду
-  if (millis() - tmr >= 1000) {
-    tmr = millis();
-
-    // 1. Запрос температуры сразу всем датчикам (SKIP ROM)
-    // GyverDS18 не имеет явного requestAll, но можно послать request
-    // по очереди или использовать broadcast логику, если библиотека позволяет.
-    // Самый надежный способ с адресами:
-    for (int i = 0; i < deviceCount; i++) {
-      ds.request(sensorAddrs[i]);
-    }
-    
-    // Ждем конвертации (DS18B20 до 750мс на 12 бит)
-    // Так как мы в loop(), лучше не делать delay(750), но для простоты
-    // и так как сеть на другом ядре, здесь это допустимо.
-    vTaskDelay(800 / portTICK_PERIOD_MS); 
-
-    // 2. Чтение данных
+  // 1. tick() должен вызываться постоянно. 
+  // Он сам следит за таймерами (запрос/чтение)
+  // Возвращает true ТОЛЬКО в тот момент, когда данные ВСЕХ датчиков обновились
+  if (ds.ready()) {
     float sum = 0;
     int valid = 0;
-    
-    for (int i = 0; i < deviceCount; i++) {
-      if (ds.ready(sensorAddrs[i])) {
-        float t = ds.getTemp(sensorAddrs[i]);
-        sensorTemps[i] = t; // Обновляем массив для веб-страницы
+
+    for (int i = 0; i < 4; i++) {
+      float t;
+      if(ds.readTemp(sensorAddrs[i])){
+        t = ds.getTemp();
+      }
+      
+      if (t > -50) { // Проверка на корректность (не ошибка)
+        sensorTemps[i] = t;
         sum += t;
         valid++;
+        Serial.print("Sensor "); Serial.print(i); 
+        Serial.print(": "); Serial.println(t);
       }
     }
+    ds.requestTemp();
 
-    // 3. Расчет и Регулятор
+    // Считаем среднее только если есть живые датчики
     if (valid > 0) {
       portENTER_CRITICAL(&sharedDataMux);
-      currentAvgTemp = sum / valid;
+      currentAvgTemp = sum / valid; // ПРАВИЛЬНЫЙ расчет среднего
       portEXIT_CRITICAL(&sharedDataMux);
-      
-      // Вывод на дисплей
-      disp.displayInt(round(currentAvgTemp));
-    } else {
-      disp.displayByte(_E, _r, _r, _empty);
     }
 
-    // Управление реле
-    portENTER_CRITICAL(&sharedDataMux);
-    regulator.input = currentAvgTemp;
-    regulator.setpoint = targetTemp;
-    portEXIT_CRITICAL(&sharedDataMux);
+    // Обновляем дисплей
+    //disp.displayInt((int)round(currentAvgTemp));
     
-    digitalWrite(RELAY_PIN, regulator.getResult());
+    Serial.print("Average: ");
+    Serial.println(currentAvgTemp);
   }
+
+  // 2. Управление реле (выносим из условия tick, чтобы регулятор работал чаще)
+  // Но входные данные обновятся только когда сработает ds.tick()
+  portENTER_CRITICAL(&sharedDataMux);
+  regulator.input = currentAvgTemp;
+  regulator.setpoint = targetTemp;
+  portEXIT_CRITICAL(&sharedDataMux);
+  
+  // Управляем реле (инверсия ! если модуль Low Level)
+  digitalWrite(RELAY_PIN, !regulator.getResult());
 }
