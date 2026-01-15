@@ -105,7 +105,7 @@ void setup() {
         server.send(200, "text/plain", "OK");
     });
     server.begin();
-    
+
     pinMode(RELAY1_PIN, OUTPUT);
     pinMode(RELAY2_PIN, OUTPUT);
 
@@ -150,5 +150,5 @@ void loop() {
         digitalWrite(RELAY2_PIN, !relay2Stat);
         
     }
-    updateDisplay();
+    updateDisplay1();
 }
