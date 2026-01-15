@@ -14,6 +14,7 @@ void updateDisplay() {
     
     disp.clear();
     
+
     if (mode == 0) {
         // Выводим внутреннюю температуру
         int val = (int)round(tempIn[4]);
@@ -39,6 +40,50 @@ void updateDisplay() {
         disp.writeByte(0b01011100); // Символ 'u' (улица)
         
         mode = 0;
+    }
+    
+    disp.update();
+}
+
+void updateDisplay1() {
+    disp.printRight(true);
+    static uint32_t tmr;
+    static byte mode = 0;
+    
+    // Обновляем данные на дисплее раз в 2 секунды
+    if (millis() - tmr < 2000) return;
+    tmr = millis();
+    mode++;
+    if (mode > 2) mode = 0;    
+    
+    disp.clear();
+    int val;
+    switch(mode){
+      case 0:
+        // Выводим внутреннюю температуру
+        val = (int)round(tempIn[4]);
+        
+        // Чтобы число не затиралось символом на 4-м разряде:
+        //if (val > 99) val = 99; // Ограничение для красоты
+        
+        disp.setCursor(3);    // Начинаем с самого первого разряда
+        disp.print(val);      // Печатаем число
+        
+        //disp.setCursor(3);    // А символ градуса ставим строго в конец
+        disp.print('*'); 
+      break;
+      case 1:
+        // Выводим уличную температуру
+        val = (int)round(tempOut);
+        disp.setCursor(3);
+        //disp.setCursor(0);
+        disp.print(val);
+        
+        //disp.setCursor(3);
+        disp.writeByte(0b01011100); // Символ 'u' (улица)
+      break;
+      case 2:
+      break;
     }
     
     disp.update();
