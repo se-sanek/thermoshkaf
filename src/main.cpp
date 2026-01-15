@@ -1,268 +1,154 @@
-#include <WiFi.h>
-#include <WebServer.h>
-#include <GyverRelay.h>
-#include <GyverDS18Single.h>
-#include <GyverDS18Array.h>
-#include <GyverSegment.h>
+#include <Arduino.h>
+#include "Settings.h"
+#include "WebInterface.h"
+#include "DisplayLogic.h"
 
-// ================= НАСТРОЙКИ СЕТИ =================
-const char* ssid = "DTT-231/2";
-const char* password = "#231-akv1";
-
-// ================= ПИНЫ =================
-#define CLK_PIN 2           // Дисплей
-#define DIO_PIN 4           // Дисплей
-
-
-WebServer server(80);
-
-Disp1637Colon disp(DIO_PIN, CLK_PIN, 1);
-
-// установка, гистерезис, направление регулирования
-GyverRelay reg1(REVERSE);
-GyverRelay reg2(REVERSE);
-GyverRelay reg3(REVERSE);
-GyverRelay reg4(REVERSE);
-
-volatile float currentAvgTemp = 0.0;
-volatile float targetTemp = 25.0; 
-
-void display(float t1, float t2, bool st1, bool st2);
-
-uint64_t addr[] = {
-  0x1F000000526CA628, // дно
-  0xA300000051EF3628, // дверь
-  0xAB0000005393F228, // середина
-  0x730000007241EA28, // верх
-  0x520000007CAAAF28, // дно
-};
-GyverDS18Array ds(5, addr, 5);
-GyverDS18Single ds1(13);
-
-static float tempIn[5];
-static float tempOut;
-bool relay1Stat;
-bool relay2Stat;
-
-// Мьютекс для безопасного доступа к переменным из разных ядер
+// Переменные
+volatile float targetTemp = 25.0;
+float tempIn[5] = {0};
+float tempOut = 0;
+bool relay1Stat = false;
+bool relay2Stat = false;
+float historyRT[30] = {0};
+float historyRT_Out[30] = {0}; // Новый массив
 portMUX_TYPE sharedDataMux = portMUX_INITIALIZER_UNLOCKED;
 
-// ================= ЗАДАЧА СЕТИ (ЯДРО 0) =================
-void networkTask(void * parameter) {
-  while (true) {
-    server.handleClient();
-    vTaskDelay(2); // Обязательно уступаем время, иначе watchdog сработает
-  }
+WebServer server(80);
+Disp1637Colon disp(DIO_PIN, CLK_PIN, 1);
+uint64_t sensorAddr[] = {
+    0x1F000000526CA628, 0xA300000051EF3628,
+    0xAB0000005393F228, 0x730000007241EA28,
+    0x520000007CAAAF28
+};
+GyverDS18Array ds(DS_PIN, sensorAddr, 5);
+GyverRelay regs[4] = { REVERSE, REVERSE, REVERSE, REVERSE };
+
+// Новая логика записи: Час, Внутренняя, Уличная
+void logHourlyData(float tIn, float tOut) {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) return;
+    static int lastHour = -1;
+    if (timeinfo.tm_hour != lastHour) {
+        lastHour = timeinfo.tm_hour;
+        char fileName[32];
+        strftime(fileName, sizeof(fileName), "/%Y-%m-%d.txt", &timeinfo);
+        File file = LittleFS.open(fileName, FILE_APPEND);
+        if (file) {
+            file.printf("%d,%.1f,%.1f\n", timeinfo.tm_hour, tIn, tOut);
+            file.close();
+        }
+    }
 }
 
-// ================= HTML СТРАНИЦА =================
-String getPage() {
-  String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>";
-  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  html += "<title>ESP32 Climate</title>";
-  html += "<style>body{font-family:sans-serif;text-align:center;padding:20px;}";
-  html += ".card{background:#eee;padding:20px;margin:10px auto;max-width:400px;border-radius:10px;}";
-  html += "button{padding:10px 20px;font-size:18px;}</style></head><body>";
-  
-  html += "<h1>Термостат</h1>";
-  
-  // Читаем переменные с блокировкой (на всякий случай, хотя float атомарен на 32бит)
-  float avg, trg, out;
-  bool s1, s2;
-  portENTER_CRITICAL(&sharedDataMux);
-  avg = tempIn[4];
-  trg = targetTemp;
-  out = tempOut;
-  s1 = relay1Stat;
-  s2 = relay2Stat;
-  portEXIT_CRITICAL(&sharedDataMux);
-
-  html += "<div class='card'><h3>Снаружи: " + String(out, 1) + " °C</h3>";
-  html += "<h3>Средняя: " + String(avg, 1) + " °C</h3>";
-  html += "<h3>Цель: <b>" + String(trg, 1) + " °C</b></h3></div>";
-
-  html += "<div class='card'><h3>Датчики</h3>";
-  html += "Внизу: <b>" + String(tempIn[0], 1) + "</b> °C<br>";
-  html += "У двери: <b>" + String(tempIn[1], 1) + "</b> °C<br>";
-  html += "В середине: <b>" + String(tempIn[2], 1) + "</b> °C<br>";
-  html += "Вверху: <b>" + String(tempIn[3], 1) + "</b> °C<br>";
-  html += "Нижний нагреватель: <b>";
-  if(s1){
-    html += "включен</b><br>";
-  } else {
-    html += "отключен</b><br>";
-  }
-  html += "Верхний нагреватель: <b>";
-  if(s2){
-    html += "включен</b><br>";
-  } else {
-    html += "отключен</b><br>";
-  }
-  
-  html += "</div>";
-
-  html += "<div class='card'><form action='/set' method='POST'>";
-  html += "Установить: <input type='number' step='0.1' name='temp' value='" + String(trg, 1) + "'> ";
-  html += "<button type='submit'>OK</button></form></div>";
-  
-  html += "</body></html>";
-  return html;
+void networkTask(void* p) {
+    for (;;) {
+        server.handleClient();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}void saveTargetTemp(float temp) {
+    File file = LittleFS.open("/target.txt", FILE_WRITE);
+    if (file) {
+        file.print(temp);
+        file.close();
+        Serial.println("Уставка сохранена в LittleFS: " + String(temp));
+    }
 }
 
-void handleRoot() {
-  server.send(200, "text/html", getPage());
-}
-
-void handleSet() {
-  if (server.hasArg("temp")) {
-    float t = server.arg("temp").toFloat();
-    portENTER_CRITICAL(&sharedDataMux);
-    targetTemp = t;
-    portEXIT_CRITICAL(&sharedDataMux);
-  }
-  server.sendHeader("Location", "/");
-  server.send(303);
+void loadTargetTemp() {
+    if (LittleFS.exists("/target.txt")) {
+        File file = LittleFS.open("/target.txt", FILE_READ);
+        if (file) {
+            String val = file.readString();
+            float loadedTemp = val.toFloat();
+            if (loadedTemp >= 5 && loadedTemp <= 40) { // Проверка на корректность
+                targetTemp = loadedTemp;
+                Serial.println("Уставка загружена из файла: " + String(targetTemp));
+            }
+            file.close();
+        }
+    } else {
+        Serial.println("Файл уставки не найден, используем значение по умолчанию");
+        saveTargetTemp(targetTemp); // Создаем файл с начальным значением
+    }
 }
 
 void setup() {
-  Serial.begin(9600);
-  ds.setResolution(12);  // для всех
-  pinMode(18, OUTPUT);         // пин реле 1
-  pinMode(19, OUTPUT);         // пин реле 2
-  reg1.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg1.hysteresis = 2;   // ширина гистерезиса
-  reg1.k = 0.5;          // коэффициент обратной связи (подбирается по факту)
-  reg2.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg2.hysteresis = 2;   // ширина гистерезиса
-  reg2.k = 0.5;          // коэффициент обратной связи (подбирается по факту)
-  reg3.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg3.hysteresis = 2;   // ширина гистерезиса
-  reg3.k = 0.5;          // коэффициент обратной связи (подбирается по факту)
-  reg4.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg4.hysteresis = 2;   // ширина гистерезиса
-  reg4.k = 0.5;          // коэффициент обратной связи (подбирается по факту)
-  disp.printRight(true);
+    Serial.begin(115200);
+    
+    // 1. Инициализация файловой системы
+    if (!LittleFS.begin(true)) {
+        Serial.println("Ошибка LittleFS!");
+    }
 
-  // Настройка WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nIP: " + WiFi.localIP().toString());
+    // 2. Загрузка сохраненной температуры СРАЗУ после LittleFS
+    loadTargetTemp();
 
-  // Запуск сервера
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/set", HTTP_POST, handleSet);
-  server.begin();
+    WiFi.begin("DTT-231/2", "#231-akv1");
+    while (WiFi.status() != WL_CONNECTED) delay(500);
+    configTime(10800, 0, "pool.ntp.org");
 
-  // Запускаем задачу сети на Ядре 0
-  xTaskCreatePinnedToCore(
-    networkTask,   // Функция
-    "NetTask",     // Имя
-    5000,          // Стек
-    NULL,          // Параметры
-    1,             // Приоритет
-    NULL,          // Хендл
-    0              // ЯДРО 0 (Здесь будет крутиться WebServer)
-  );
+    server.on("/", HTTP_GET, [](){ server.send(200, "text/html", getPage()); });
+    server.on("/get_data", HTTP_GET, handleData);
+    server.on("/get_history", HTTP_GET, handleGetHistory);
+    server.on("/set", HTTP_POST, [](){
+        if (server.hasArg("temp")) {
+            float val = server.arg("temp").toFloat();
+            if (val >= 0 && val <= 40) {
+                portENTER_CRITICAL(&sharedDataMux);
+                targetTemp = val;
+                portEXIT_CRITICAL(&sharedDataMux);
+                
+                // СОХРАНЯЕМ В ФАЙЛ
+                saveTargetTemp(targetTemp);
+            }
+        }
+        server.send(200, "text/plain", "OK");
+    });
+    server.begin();
+    
+    pinMode(RELAY1_PIN, OUTPUT);
+    pinMode(RELAY2_PIN, OUTPUT);
+
+    xTaskCreatePinnedToCore(networkTask, "NetTask", 8192, NULL, 1, NULL, 0);
 }
 
 void loop() {
-    // это таймер с периодом к setResolution, он сам делает request
-  
+    if (!ds.tick()) {
+        float temps[5];
+        ds.readTemps(temps);
+        
+        float sum = 0; int count = 0;
+        for (int i = 0; i < 4; i++) {
+            if (!isnan(temps[i])) { 
+              tempIn[i] = temps[i]; 
+              sum += temps[i]; 
+              count++; }
+        }
+        if (count > 0) tempIn[4] = sum / count;
+        tempOut = temps[4];
 
-  if (!ds.tick()) {
-    float temps[5];
-    ds.readTemps(temps);
-    for (int i = 0; i < 5; i++) {
-      if(i < 4){
-        tempIn[i] = temps[i];
-      } else{
-        tempOut = temps[i];
-      }
-    }
-    tempIn[4] = 0;
-    int val = 0;
-    for(int i = 0; i < 4; i++){
-      if(!isnan(tempIn[i])){
-        tempIn[4] += tempIn[i];
-        val++;
-      }
-    }
-    tempIn[4] /= val;
-    for(int i = 0; i < 4; i++){
-      Serial.println(tempIn[i]);
-    }
-    Serial.println();
-    Serial.println(tempIn[4]);
-    Serial.println();
-    Serial.println(tempOut);
-    Serial.println();
-    Serial.println();
-  }  
-  reg1.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg2.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg3.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg4.setpoint = targetTemp;    // установка (ставим на 40 градусов)
-  reg1.input = tempIn[0];   // сообщаем регулятору текущую температуру
-  reg2.input = tempIn[1];   // сообщаем регулятору текущую температуру
-  reg3.input = tempIn[2];   // сообщаем регулятору текущую температуру
-  reg4.input = tempIn[3];   // сообщаем регулятору текущую температуру
+        // Сдвигаем оба графика RT
+        for (int i = 0; i < 29; i++) {
+            historyRT[i] = historyRT[i+1];
+            historyRT_Out[i] = historyRT_Out[i+1];
+        }
+        historyRT[29] = tempIn[4];
+        historyRT_Out[29] = tempOut;
 
-  // getResult возвращает значение для управляющего устройства
-  relay1Stat = (reg1.getResultTimer()||reg2.getResultTimer()||reg3.getResultTimer()||reg4.getResultTimer());
-  relay2Stat = reg4.getResultTimer();
-  digitalWrite(18, !relay1Stat);  // отправляем на реле (ОС работает по своему таймеру)
-  digitalWrite(19, !relay2Stat);  // отправляем на реле (ОС работает по своему таймеру)
-  display(tempIn[4], tempOut, relay1Stat, relay2Stat);
-}
+        // Логируем две температуры
+        logHourlyData(tempIn[4], tempOut);
 
-void display(float t1, float t2, bool st1, bool st2){
-  static uint32_t timer;
-  static int flag = 0;
-  disp.clear();
-  if (millis() - timer >= 3000){
-    flag++;
-    if (flag > 2) flag = 0;
-    if (flag == 2) {
-      disp.colon(1);
-    } else {
-      disp.colon(0);
+        for (int i = 0; i < 4; i++) {
+            regs[i].setpoint = targetTemp;
+            regs[i].input = tempIn[i];
+        }
+        
+        relay1Stat = (regs[0].getResultTimer() || regs[1].getResultTimer() || regs[2].getResultTimer());
+        relay2Stat = regs[3].getResultTimer();
+        
+        digitalWrite(RELAY1_PIN, !relay1Stat);
+        digitalWrite(RELAY2_PIN, !relay2Stat);
+        
     }
-    timer = millis();
-  }
-  switch (flag) {
-  case 0:
-    disp.print((int)round(t1));
-    disp.setCursor(3);
-    disp.print('*');
-    break;
-  
-  case 1:
-    disp.print((int)round(t2));
-    disp.setCursor(3);
-    disp.writeByte(0b01011100);
-    //isp.print('>');
-    break;
-  
-  case 2:
-    if(st1){
-      disp.writeByte(0b01011100);
-      disp.print("N.");
-    }else{
-      disp.writeByte(0b01011100);
-      disp.print("F.");
-    }
-    if(st2){
-    disp.writeByte(0b01011100);
-      disp.print("N.");
-    }else{
-    disp.writeByte(0b01011100);
-      disp.print("F.");
-    }
-    break;
-  }
-  
-  disp.update();
+    updateDisplay();
 }
