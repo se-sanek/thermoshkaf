@@ -1,0 +1,17 @@
+{
+  "name": "Термошкаф",
+  "about": "Краткое описание проекта",
+  "version": "1.0.1",
+  "notes": "Подключение OTA",
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "https://github/se-sanek/thermoshkaf/releases/download/1/firmware.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
