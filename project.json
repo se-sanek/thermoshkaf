@@ -8,7 +8,7 @@
       "chipFamily": "ESP32",
       "parts": [
         {
-          "path": "https://github/se-sanek/thermoshkaf/releases/latest/download/firmware.bin",
+          "path": "https://github/se-sanek/thermoshkaf/releases/download/1/firmware.bin",
           "offset": 0
         }
       ]
