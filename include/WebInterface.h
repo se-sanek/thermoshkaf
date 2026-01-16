@@ -23,6 +23,10 @@ String getPage() {
     html += F("table{width:100%;margin-top:10px;border-collapse:collapse;} td,th{padding:12px;border-bottom:1px solid #333;text-align:left;}");
     html += F(".relay-status{display:inline-block;padding:3px 10px;border-radius:15px;font-size:0.8em;font-weight:bold;}");
     html += F(".on{background:#1b5e20;color:#00e676;} .off{background:#b71c1c;color:#ff8a80;}");
+
+    // html += F(".ota-bar{display:none;background:#ff9800;color:#000;padding:15px;position:fixed;bottom:0;left:0;right:0;text-align:center;font-weight:bold;z-index:1000;box-shadow:0 -2px 10px rgba(0,0,0,0.5);}");
+    // html += F(".ota-btn{background:#000;color:#ff9800;border:none;padding:8px 15px;border-radius:5px;margin-left:10px;cursor:pointer;font-weight:bold;}");
+    
     html += F("@keyframes fadeIn{from{opacity:0;} to{opacity:1;}}");
     html += F("</style></head><body>");
 
@@ -49,7 +53,12 @@ String getPage() {
     html += F("<div class='val-box'><div class='label'>Нижний нагрев</div><div id='r1_stat' class='relay-status off'>--</div></div>");
     html += F("<div class='val-box'><div class='label'>Верхний нагрев</div><div id='r2_stat' class='relay-status off'>--</div></div>");
     html += F("</div>");
-    html += F("<canvas id='rtChart'></canvas></div></div>");
+    html += F("<canvas id='rtChart'></canvas></div>");
+    // Вставьте это в getPage() вместо старого блока обновлений
+    html += F("<div class='val-box' style='margin-top:20px;'>");
+    html += F("<a href='/ota_page' style='color:#2196F3; text-decoration:none; font-weight:bold;'>");
+    html += F("⚙ Обновление ПО</a>");
+    html += F("</div></div>");
 
     // СТРАНИЦА 2: АРХИВ
     html += F("<div id='p2' class='page'><div class='card'><h2>История за сутки</h2>");
@@ -91,6 +100,13 @@ String getPage() {
     html += F("rtChart.data.datasets[0].data=d.histIn; rtChart.data.datasets[1].data=d.histOut; rtChart.update();");
     html += F("}); } setInterval(update, 3000); update();");
 
+    // Новая функция для запуска обновления
+    html += F("function doActualUpdate() {");
+    html += F("if(confirm('Устройство будет перезагружено для установки обновления. Продолжить?')) {");
+    html += F("document.getElementById('ota_bar').innerText = 'Загрузка прошивки... Не выключайте питание!';");
+    html += F("fetch('/do_ota');");
+    html += F("}");
+    html += F("}");
     // Отправка новой температуры
     html += F("function setTemp(){ let t=document.getElementById('targetInp').value; fetch('/set?temp='+t, {method:'POST'}).then(()=>update()); }");
 
@@ -104,11 +120,43 @@ String getPage() {
     return html;
 }
 
+String getOTAPage(bool found, String v, String n) {
+    String html = F("<!DOCTYPE html><html><head><meta charset='utf-8'>");
+    html += F("<meta name='viewport' content='width=device-width, initial-scale=1'>");
+    html += F("<style>body{font-family:sans-serif;background:#121212;color:#eee;text-align:center;padding:20px;}");
+    html += F(".card{background:#1e1e1e;padding:20px;border-radius:10px;max-width:400px;margin:auto;border:1px solid #333;}");
+    html += F("button{padding:12px 20px;margin:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;}");
+    html += F(".btn-check{background:#2196F3;color:#fff;} .btn-upd{background:#ff9800;color:#000;}");
+    html += F(".btn-back{background:#555;color:#eee;text-decoration:none;display:inline-block;padding:10px;}");
+    html += F("</style></head><body>");
+
+    html += F("<div class='card'><h2>Обновление ПО</h2>");
+    html += F("<p>Текущая версия: ");
+    html += F(VERSION);
+    html += F("</p>");
+
+    if (found) {
+        html += "<p style='color:#ff9800'>Найдена новая версия: <b>" + v + "</b></p>";
+        if (n.length() > 0) html += "<p style='font-size:0.9em;color:#888;'>" + n + "</p>";
+        html += F("<form action='/do_ota' method='GET'><button class='btn-upd'>УСТАНОВИТЬ ОБНОВЛЕНИЕ</button></form>");
+    } else {
+        html += F("<p>Обновлений не найдено или проверка не проводилась.</p>");
+        html += F("<form action='/check_manual' method='GET'><button class='btn-check'>ПРОВЕРИТЬ НАЛИЧИЕ</button></form>");
+    }
+
+    html += F("<br><br><a href='/' class='btn-back'>назад на главную</a>");
+    html += F("</div></body></html>");
+    return html;
+}
+
 void handleData() {
     String json = "{";
     json += "\"avg\":" + String(tempIn[4], 1) + ",";
     json += "\"out\":" + String(tempOut, 1) + ",";
     json += "\"target\":" + String(targetTemp, 1) + ",";
+    // Добавляем статус обновления
+    json += "\"otaAvail\":" + String(updateAvailable ? "true" : "false") + ",";
+    json += "\"newVer\":\"" + ver + "\","; // Версия из GitHub
     json += "\"s1\":" + String(relay1Stat ? "true" : "false") + ",";
     json += "\"s2\":" + String(relay2Stat ? "true" : "false") + ",";
     json += "\"d0\":" + String(tempIn[0], 1) + ",";

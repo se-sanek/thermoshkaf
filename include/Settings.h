@@ -25,6 +25,9 @@ extern float historyRT[30];      // История средней темп. (RT)
 extern float historyRT_Out[30];  // История уличной темп. (RT)
 extern portMUX_TYPE sharedDataMux;
 
+String ver, notes;
+bool updateAvailable = false;
+
 extern WebServer server;
 extern Disp1637Colon disp;
 extern GyverRelay regs[4];

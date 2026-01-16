@@ -1,10 +1,13 @@
+#define VERSION "1.0.3"
+
 #include <Arduino.h>
 #include <AutoOTA.h> // Добавляем инклуд
 #include "Settings.h"
 #include "WebInterface.h"
 #include "DisplayLogic.h"
+
 // Создаем объект OTA
-AutoOTA ota("1.0.0", "se-sanek/thermoshkaf/ota/project.json");
+AutoOTA ota(VERSION, "se-sanek/thermoshkaf");
 
 // Переменные
 volatile float targetTemp = 25.0;
@@ -153,7 +156,12 @@ void setup() {
     loadTargetTemp();
 
     WiFi.begin("DTT-231/2", "#231-akv1");
-    while (WiFi.status() != WL_CONNECTED) delay(500);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("Connected");
+    Serial.println(WiFi.localIP());
 
     configTime(18000, 0, "pool.ntp.org");
 
@@ -174,6 +182,40 @@ void setup() {
         }
         server.send(200, "text/plain", "OK");
     });
+    server.on("/check_update", HTTP_GET, [](){
+        ota.checkUpdate(&ver, &notes); 
+        server.send(200, "text/plain", "OK");
+    });
+    // Маршрут для запуска самого обновления
+    server.on("/do_ota", HTTP_GET, [](){
+        server.send(200, "text/plain", "Update...");
+        ota.updateNow(); // Запуск загрузки и прошивки
+    });
+    // Добавьте в setup()
+    server.on("/ota_page", HTTP_GET, [](){
+        server.send(200, "text/html", getOTAPage(updateAvailable, ver, notes));
+    });
+
+    server.on("/check_manual", HTTP_GET, [](){
+        // Запускаем проверку
+        if (ota.checkUpdate(&ver, &notes)) {
+            updateAvailable = true;
+        } else {
+            updateAvailable = false;
+        }
+        // После проверки перенаправляем пользователя обратно на ту же страницу
+        server.sendHeader("Location", "/ota_page");
+        server.send(303);
+    });
+
+    server.on("/do_ota", HTTP_GET, [](){
+        if (updateAvailable) {
+            server.send(200, "text/html", "<h2>Обновление запущено...</h2><p>ESP32 перезагрузится через 1-2 минуты.</p>");
+            ota.update(); 
+        } else {
+            server.send(200, "text/plain", "No update found");
+        }
+    });
     server.begin();
 
     pinMode(RELAY1_PIN, OUTPUT);
@@ -183,11 +225,6 @@ void setup() {
 }
 
 void loop() {
-  String ver, notes;
-if (ota.checkUpdate(&ver, &notes)) {
-    Serial.println(ver);
-    Serial.println(notes);
-}
     if (!ds.tick()) {
         float temps[5];
         ds.readTemps(temps);
