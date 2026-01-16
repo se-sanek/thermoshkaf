@@ -51,10 +51,11 @@ void updateDisplay1() {
     static byte mode = 0;
     
     // Обновляем данные на дисплее раз в 2 секунды
-    if (millis() - tmr < 2000) return;
+    if (millis() - tmr < 3000) return;
     tmr = millis();
     mode++;
-    if (mode > 2) mode = 0;    
+    if (mode > 2) mode = 0;  
+      
     
     disp.clear();
     int val;
@@ -83,6 +84,16 @@ void updateDisplay1() {
         disp.writeByte(0b01011100); // Символ 'u' (улица)
       break;
       case 2:
+      if(relay1Stat && relay2Stat){
+        disp.setCursor(3);
+        disp.fillChar('0');
+      }else if(relay1Stat){
+        disp.fill(0b00011100);
+      }else if(relay2Stat){
+        disp.fill(0b00100011);
+      }else{
+        disp.fill(0b01000000);
+      }
       break;
     }
     

@@ -35,7 +35,7 @@ String getPage() {
     html += F("<div class='card'><h3>Управление и мониторинг</h3>");
     html += F("<div class='grid'>");
     html += F("<div class='val-box'><div class='label'>Внутри (средняя)</div><div class='value' id='v_avg'>--</div></div>");
-    html += F("<div class='val-box'><div class='label'>Улица</div><div class='value' style='color:#ffcc00' id='v_out'>--</div></div>");
+    html += F("<div class='val-box'><div class='label'>Снаружи</div><div class='value' style='color:#ffcc00' id='v_out'>--</div></div>");
     html += F("</div>");
     
     // Блок установки температуры
@@ -46,8 +46,8 @@ String getPage() {
     html += F("<div class='label' style='margin-top:5px;'>Сейчас установлено: <b id='v_target' style='color:#fff'>--</b>°C</div></div>");
 
     html += F("<div class='grid'>");
-    html += F("<div class='val-box'><div class='label'>Реле 1-3</div><div id='r1_stat' class='relay-status off'>--</div></div>");
-    html += F("<div class='val-box'><div class='label'>Реле 4</div><div id='r2_stat' class='relay-status off'>--</div></div>");
+    html += F("<div class='val-box'><div class='label'>Нижний нагрев</div><div id='r1_stat' class='relay-status off'>--</div></div>");
+    html += F("<div class='val-box'><div class='label'>Верхний нагрев</div><div id='r2_stat' class='relay-status off'>--</div></div>");
     html += F("</div>");
     html += F("<canvas id='rtChart'></canvas></div></div>");
 
@@ -58,12 +58,12 @@ String getPage() {
 
     // СТРАНИЦА 3: ВСЕ ДАТЧИКИ
     html += F("<div id='p3' class='page'><div class='card'><h2>Показания всех датчиков</h2>");
-    html += F("<table><tr><th>Датчик (Локация)</th><th>Температура</th></tr>");
-    html += F("<tr><td>Дно (D0)</td><td class='value' id='d0'>--</td></tr>");
-    html += F("<tr><td>Дверь (D1)</td><td class='value' id='d1'>--</td></tr>");
-    html += F("<tr><td>Середина (D2)</td><td class='value' id='d2'>--</td></tr>");
-    html += F("<tr><td>Верх (D3)</td><td class='value' id='d3'>--</td></tr>");
-    html += F("<tr><td>Улица (D4)</td><td class='value' style='color:#ffcc00' id='d4'>--</td></tr>");
+    html += F("<table><tr><th>Датчик</th><th>Температура</th></tr>");
+    html += F("<tr><td>Внизу</td><td class='value' id='d0'>--</td></tr>");
+    html += F("<tr><td>У двери</td><td class='value' id='d1'>--</td></tr>");
+    html += F("<tr><td>Середина</td><td class='value' id='d2'>--</td></tr>");
+    html += F("<tr><td>Верху</td><td class='value' id='d3'>--</td></tr>");
+    html += F("<tr><td>Снаружи</td><td class='value' style='color:#ffcc00' id='d4'>--</td></tr>");
     html += F("</table></div></div>");
 
     html += F("<script>");
@@ -75,7 +75,7 @@ String getPage() {
     html += F("var rtCtx = document.getElementById('rtChart').getContext('2d');");
     html += F("var rtChart = new Chart(rtCtx, {type:'line', data:{labels:Array(30).fill(''),");
     html += F("datasets:[{label:'Внутри', borderColor:'#00e676', data:[], tension:0.3, pointRadius:0},");
-    html += F("{label:'Улица', borderColor:'#ffcc00', data:[], tension:0.3, pointRadius:0}]},");
+    html += F("{label:'Снаружи', borderColor:'#ffcc00', data:[], tension:0.3, pointRadius:0}]},");
     html += F("options:{animation:false, scales:{y:{grid:{color:'#333'}},x:{display:false}}}});");
 
     // Функция обновления данных
@@ -95,7 +95,9 @@ String getPage() {
     html += F("function setTemp(){ let t=document.getElementById('targetInp').value; fetch('/set?temp='+t, {method:'POST'}).then(()=>update()); }");
 
     // Архив
-    html += F("var hChart = new Chart(document.getElementById('hChart'), {type:'line', data:{labels:[], datasets:[{label:'Внутри', borderColor:'#00e676', data:[]},{label:'Улица', borderColor:'#ffcc00', data:[]}]}});");
+    html += F("var hChart = new Chart(document.getElementById('hChart'), {type:'line', data:{labels:[], ");
+    html += F("datasets:[{label:'Внутри', borderColor:'#00e676', data:[]},");
+    html += F("{label:'Снаружи', borderColor:'#ffcc00', data:[]}]}});");
     html += F("function loadHist(){ let d=document.getElementById('hDate').value; fetch('/get_history?date='+d).then(r=>r.json()).then(data=>{");
     html += F("hChart.data.labels=data.map(i=>i.h+':00'); hChart.data.datasets[0].data=data.map(i=>i.t1); hChart.data.datasets[1].data=data.map(i=>i.t2); hChart.update(); }); }");
     html += F("</script></body></html>");
