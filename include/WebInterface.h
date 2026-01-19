@@ -111,10 +111,21 @@ String getPage() {
     html += F("function setTemp(){ let t=document.getElementById('targetInp').value; fetch('/set?temp='+t, {method:'POST'}).then(()=>update()); }");
 
     // Архив
-    html += F("var hChart = new Chart(document.getElementById('hChart'), {type:'line', data:{labels:[], ");
-    html += F("datasets:[{label:'Внутри', borderColor:'#00e676', data:[]},");
-    html += F("{label:'Снаружи', borderColor:'#ffcc00', data:[]}]}});");
-    html += F("function loadHist(){ let d=document.getElementById('hDate').value; fetch('/get_history?date='+d).then(r=>r.json()).then(data=>{");
+    html += F("var hChart = new Chart(document.getElementById('hChart'), {");
+    html += F(" type:'line', ");
+    html += F(" data:{labels:[], ");
+    html += F(" datasets:[");
+    html += F("   {");
+    html += F("     label:'Внутри',");
+    html += F("     borderColor:'#00e676',");
+    html += F("     data:[]},");
+    html += F("   {");
+    html += F("     label:'Снаружи',");
+    html += F("     borderColor:'#ffcc00', ");
+    html += F("     data:[]}]}});");
+    html += F("function loadHist(){ ");
+    html += F(" let d=document.getElementById('hDate').value;");
+    html += F(" fetch('/get_history?date='+d).then(r=>r.json()).then(data=>{");
     html += F("hChart.data.labels=data.map(i=>i.h+':00'); hChart.data.datasets[0].data=data.map(i=>i.t1); hChart.data.datasets[1].data=data.map(i=>i.t2); hChart.update(); }); }");
     html += F("</script></body></html>");
     return html;
@@ -149,7 +160,7 @@ String getOTAPage(bool found, String v, String n) {
     return html;
 }
 
-void handleData() {
+/*void handleData() {
     String json = "{";
     json += "\"avg\":" + String(tempIn[4], 1) + ",";
     json += "\"out\":" + String(tempOut, 1) + ",";
@@ -170,28 +181,92 @@ void handleData() {
     for (int i = 0; i < 30; i++) { json += String(historyRT_Out[i], 1); if (i < 29) json += ","; }
     json += "]}";
     server.send(200, "application/json", json);
-}
+}*/
 
+void handleData() {
+    String json = "{";
+    json.reserve(1024);
+    // Вспомогательная лямбда-функция для проверки float на nan
+    auto checkNan = [](float val) -> String {
+        return isnan(val) ? "null" : String(val, 1);
+    };
+
+    json += "\"avg\":" + checkNan(tempIn[4]) + ",";
+    json += "\"out\":" + checkNan(tempOut) + ",";
+    json += "\"target\":" + String(targetTemp, 1) + ",";
+    
+    // Статус обновления
+    json += "\"otaAvail\":" + String(updateAvailable ? "true" : "false") + ",";
+    json += "\"newVer\":\"" + ver + "\","; 
+    
+    json += "\"s1\":" + String(relay1Stat ? "true" : "false") + ",";
+    json += "\"s2\":" + String(relay2Stat ? "true" : "false") + ",";
+    
+    // Датчики по отдельности
+    json += "\"d0\":" + checkNan(tempIn[0]) + ",";
+    json += "\"d1\":" + checkNan(tempIn[1]) + ",";
+    json += "\"d2\":" + checkNan(tempIn[2]) + ",";
+    json += "\"d3\":" + checkNan(tempIn[3]) + ",";
+    json += "\"d4\":" + checkNan(tempOut) + ",";
+    
+    // Массив истории Внутри
+    json += "\"histIn\": [";
+    for (int i = 0; i < 30; i++) { 
+        json += checkNan(historyRT[i]); 
+        if (i < 29) json += ","; 
+    }
+    
+    // Массив истории Улица
+    json += "], \"histOut\": [";
+    for (int i = 0; i < 30; i++) { 
+        json += checkNan(historyRT_Out[i]); 
+        if (i < 29) json += ","; 
+    }
+    
+    json += "]}";
+    server.send(200, "application/json", json);
+}
 
 void handleGetHistory() {
     String date = server.arg("date");
     String filename = "/" + date + ".txt";
-    if (!LittleFS.exists(filename)) { server.send(200, "application/json", "[]"); return; }
+    if (!LittleFS.exists(filename)) { 
+        server.send(200, "application/json", "[]"); 
+        return; 
+    }
     File file = LittleFS.open(filename, FILE_READ);
+    Serial.print("File load: ");
+    Serial.println(filename);
+
     String json = "[";
     while (file.available()) {
         String line = file.readStringUntil('\n');
+        line.trim(); // Убираем лишние пробелы и символы переноса
+        if (line.length() == 0) continue;
         // Формат файла: час,темпВнутр,темпУлица
         int c1 = line.indexOf(',');
         int c2 = line.lastIndexOf(',');
+
         if (c1 > 0 && c2 > c1) {
-            json += "{\"h\":" + line.substring(0, c1);
-            json += ",\"t1\":" + line.substring(c1 + 1, c2);
-            json += ",\"t2\":" + line.substring(c2 + 1) + "}";
+            String sH = line.substring(0, c1);
+            String sT1 = line.substring(c1 + 1, c2);
+            String sT2 = line.substring(c2 + 1);
+
+            // Превращаем в float для проверки на nan
+            float fT1 = sT1.toFloat();
+            float fT2 = sT2.toFloat();
+
+            json += "{\"h\":" + sH;
+            json += ",\"t1\":" + String(isnan(fT1) ? "null" : String(fT1, 1));
+            json += ",\"t2\":" + String(isnan(fT2) ? "null" : String(fT2, 1)) + "}";
             if (file.available()) json += ",";
         }
     }
+    // Убираем возможную лишнюю запятую в конце (если последняя строка была битой)
+    if (json.endsWith(",")) json.remove(json.length() - 1);
+
     json += "]";
+    Serial.println(json);
     file.close();
     server.send(200, "application/json", json);
 }

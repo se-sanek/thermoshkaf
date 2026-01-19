@@ -94,8 +94,15 @@ void cleanupOldLogs() {
 void logHourlyData(float tIn, float tOut) {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) return;
+    if (timeinfo.tm_min != 0) return;
     static int lastHour = -1;
     if (timeinfo.tm_hour != lastHour) {
+        Serial.print("Write data to time: ");
+        Serial.print(timeinfo.tm_hour);
+        Serial.print(" : ");
+        Serial.print(timeinfo.tm_min);
+        Serial.print(" : ");
+        Serial.println(timeinfo.tm_year+1900);
         lastHour = timeinfo.tm_hour;
         // --- ДОБАВЛЕНО: Запуск очистки раз в сутки в 00:00 ---
         if (timeinfo.tm_hour == 0) {
@@ -103,11 +110,12 @@ void logHourlyData(float tIn, float tOut) {
         }
         // ---------------------------------------------------
         char fileName[32];
-        strftime(fileName, sizeof(fileName), "/%Y-%m-%d.txt", &timeinfo);
+        strftime(fileName, sizeof(fileName), "/%Y-%m-%d.txt", &timeinfo);Serial.print("Full path to write: "); Serial.println(fileName);
         File file = LittleFS.open(fileName, FILE_APPEND);
         if (file) {
             file.printf("%d,%.1f,%.1f\n", timeinfo.tm_hour, tIn, tOut);
             file.close();
+            Serial.println("File write success");
         }
     }
 }
@@ -163,7 +171,7 @@ void setup() {
     Serial.println("Connected");
     Serial.println(WiFi.localIP());
 
-    configTime(18000, 0, "pool.ntp.org");
+    configTime(18000, 0, "ntp0.ntp-servers.net");
 
     server.on("/", HTTP_GET, [](){ server.send(200, "text/html", getPage()); });
     server.on("/get_data", HTTP_GET, handleData);
