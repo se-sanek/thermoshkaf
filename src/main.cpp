@@ -5,6 +5,8 @@
 #include "Settings.h"
 #include "WebInterface.h"
 #include "DisplayLogic.h"
+#include "wifi-connect.h"
+
 
 // Создаем объект OTA
 AutoOTA ota(VERSION, "se-sanek/thermoshkaf");
@@ -152,26 +154,32 @@ void loadTargetTemp() {
     }
 }
 
+
+
 void setup() {
     Serial.begin(115200);
-    
-    // 1. Инициализация файловой системы
-    if (!LittleFS.begin(true)) {
-        Serial.println("Ошибка LittleFS!");
-    }
+    if (!LittleFS.begin(true)) Serial.println("LittleFS Error");
 
-    // 2. Загрузка сохраненной температуры СРАЗУ после LittleFS
+    loadWiFiConfig(); // Загружаем старые или дефолтные данные
     loadTargetTemp();
 
-    WiFi.begin("DTT-231/2", "#231-akv1");
-    while (WiFi.status() != WL_CONNECTED) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(wcfg.ssid, wcfg.pass);
+
+    // Ждем подключения 15 секунд
+    unsigned long startAttempt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
         delay(500);
         Serial.print(".");
     }
-    Serial.println("Connected");
-    Serial.println(WiFi.localIP());
 
-    configTime(18000, 0, "ntp0.ntp-servers.net");
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("\nНе удалось подключиться. Запуск точки доступа...");
+        startConfigPortal(); // Если не подключились, включаем AP
+    } else {
+        Serial.println("\nПодключено!");
+        configTime(18000, 0, "ntp0.ntp-servers.net");
+    }
 
     server.on("/", HTTP_GET, [](){ server.send(200, "text/html", getPage()); });
     server.on("/get_data", HTTP_GET, handleData);
@@ -233,6 +241,14 @@ void setup() {
 }
 
 void loop() {
+    static uint32_t wifiTimer = 0;
+    if (millis() - wifiTimer > 60000) { // Проверка раз в минуту
+        wifiTimer = millis();
+        if (WiFi.status() != WL_CONNECTED && WiFi.getMode() == WIFI_STA) {
+            Serial.println("Потеря связи, попытка переподключения...");
+            WiFi.begin(wcfg.ssid, wcfg.pass);
+        }
+    }
     if (!ds.tick()) {
         float temps[5];
         ds.readTemps(temps);

@@ -32,4 +32,14 @@ extern WebServer server;
 extern Disp1637Colon disp;
 extern GyverRelay regs[4];
 
+// Добавьте в Settings.h
+struct WiFiConfig {
+    char ssid[32];
+    char pass[64];
+};
+
+extern WiFiConfig wcfg;
+void loadWiFiConfig();
+void saveWiFiConfig(const char* s, const char* p);
+
 #endif
