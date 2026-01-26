@@ -28,6 +28,8 @@ void saveWiFiConfig(const char* s, const char* p) {
 void startConfigPortal() {
     WiFi.softAP("ESP32_Config_Portal");
     Serial.println("Запущена точка доступа: ESP32_Config_Portal");
+
+    connectStat = 1;
     
     // Временный маршрут для сохранения данных
     server.on("/save_wifi", HTTP_POST, []() {
