@@ -11,8 +11,8 @@
 #include <time.h>
 
 #define DS_PIN 5
-#define CLK_PIN 2
-#define DIO_PIN 4
+#define CLK_PIN 4
+#define DIO_PIN 2
 #define RELAY1_PIN 18
 #define RELAY2_PIN 19
 
