@@ -20,6 +20,7 @@ String getPage() {
     html += F(".label{font-size:0.8em;color:#888;} .value{font-size:1.5em;font-weight:bold;color:#00e676;}");
     html += F("input[type='number']{background:#333;color:#fff;border:1px solid #444;padding:8px;border-radius:5px;width:70px;font-size:1.2em;text-align:center;}");
     html += F("button.set-btn{background:#00e676;color:#000;border:none;padding:8px 15px;border-radius:5px;font-weight:bold;cursor:pointer;margin-left:5px;}");
+    if (connectStat) html += F("button.set-wifi{background:#00e676;color:#000;border:none;padding:8px 15px;border-radius:5px;font-weight:bold;cursor:pointer;margin-left:5px;}");
     html += F("table{width:100%;margin-top:10px;border-collapse:collapse;} td,th{padding:12px;border-bottom:1px solid #333;text-align:left;}");
     html += F(".relay-status{display:inline-block;padding:3px 10px;border-radius:15px;font-size:0.8em;font-weight:bold;}");
     html += F(".on{background:#1b5e20;color:#00e676;} .off{background:#b71c1c;color:#ff8a80;}");
@@ -58,6 +59,11 @@ String getPage() {
     html += F("<div class='val-box' style='margin-top:20px;'>");
     html += F("<a href='/ota_page' style='color:#2196F3; text-decoration:none; font-weight:bold;'>");
     html += F("⚙ Обновление ПО</a>");
+    if (connectStat) {
+    html += F("</div><div class='val-box' style='margin-top:20px;'>");
+      html += F("<a href='/config' style='color:#2196F3; text-decoration:none; font-weight:bold;'>");
+      html += F("⚙ Настройка WiFi</a>");
+    }
     html += F("</div></div>");
 
     // СТРАНИЦА 2: АРХИВ

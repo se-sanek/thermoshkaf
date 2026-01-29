@@ -24,6 +24,7 @@ extern bool relay2Stat;
 extern float historyRT[30];      // История средней темп. (RT)
 extern float historyRT_Out[30];  // История уличной темп. (RT)
 extern portMUX_TYPE sharedDataMux;
+extern bool connectStat = 0;
 
 String ver, notes;
 bool updateAvailable = false;
